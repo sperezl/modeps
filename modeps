@@ -1,0 +1,101 @@
+#!/bin/bash
+
+usage()
+{
+	PROGRAMNAME=$0
+	echo ""
+	echo "Usage: $PROGRAMNAME [-ma] [-m module] [-a all]"
+	echo "	-m	module to know dependencies"
+	echo "  -a	dependencies for all modules on the system" 
+	echo "  -h 	display this help"
+	echo ""
+	exit 1
+}
+
+
+# Needs the name of a module
+# Returns an array of dependencies
+dependencies()
+{
+        DEPENDENCIES=$(module show $1 | grep 'load(')
+        if ! [[ -z "${DEPENDENCIES}" ]]; then
+		LVL=$((LVL+4))
+                for MODULE in $DEPENDENCIES
+                do
+                	stringclean $MODULE
+                done
+		LVL=$((LVL-4))	
+        fi
+}
+
+
+# Needs a module or load("module")
+# Returns a clean string with the name of the dependency
+stringclean()
+{
+	
+	SUBPREFIX='load("'
+	SUBSUFFIX='\")'
+	MODULE=${1#$SUBPREFIX}
+	MODULE=${MODULE%$SUBSUFFIX}
+	module is-avail $MODULE	
+	if [[ "$?" -eq 0 ]]; then
+		s=$(printf "%-${LVL}s" "")
+		echo "${s// / } $MODULE"
+		dependencies $MODULE
+	else
+		echo "Error: The module $MODULE isn't available"
+		exit 1
+	fi
+}
+
+
+bymodule()
+{
+	for MODULE in $MODULES
+	        do
+		LVL=0
+                stringclean $MODULE
+        done
+}
+
+
+lookonmodulepath()
+{
+	for MPATH in $MODULEPATH
+	do
+		echo $1
+		grep -R "load(${1}" $MPATH
+	done
+}
+
+hash module 2>/dev/null
+if [[ "$?" -gt 0 ]]; then
+	echo "Error: module is not found in PATH. "
+	exit 1
+else
+	if [[ $# -gt 0 ]]; then
+		while [ "$1" != "" ]; do
+	    	case $1 in
+	       		-m | --module )         shift
+						LVL=0
+						stringclean $1
+                        	        	;;
+                	-a | --all )  	        shift
+                	                        MODULES=$(module -t -q av | grep -v "^/\|/$")
+						bymodule $MODULES
+                	                        ;;
+			-i | --is-dependency)   shift
+						lookonmodulepath $1
+						;;
+        		-h | --help )           usage
+        	                	        ;;
+        		* ) 	                shift
+    		esac
+    		shift
+		done
+	else
+	echo "Error: No arguments supplied"
+	usage
+	fi
+fi
